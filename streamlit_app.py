@@ -1,56 +1,93 @@
 import streamlit as st
 from openai import OpenAI
 
+# Page configuration
+st.set_page_config(page_title="🎬 YouTube 인터뷰 추천 챗봇", layout="wide")
+
 # Show title and description.
-st.title("💬 Chatbot")
+st.title("🎬 YouTube 인터뷰 추천 챗봇")
 st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
+    "이 챗봇은 당신의 관심사에 맞춰 YouTube 인터뷰 영상을 추천해드립니다. "
+    "원하는 주제나 인물에 대해 물어보세요!"
 )
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
+# Get OpenAI API key from secrets
+openai_api_key = st.secrets.get("OPENAI_API_KEY")
 if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+    st.error("⚠️ OpenAI API 키가 설정되지 않았습니다. .streamlit/secrets.toml 파일을 확인해주세요.", icon="🔑")
+    st.stop()
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+# Create an OpenAI client.
+client = OpenAI(api_key=openai_api_key)
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+# Initialize session state variables
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+if "interview_recommendations" not in st.session_state:
+    st.session_state.interview_recommendations = None
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+# System prompt for YouTube interview recommendation
+SYSTEM_PROMPT = """당신은 친절한 YouTube 인터뷰 영상 추천 전문가입니다.
+사용자의 관심사, 요구사항, 또는 궁금한 주제에 대해 YouTube에서 볼 수 있는 인터뷰 영상 3개를 추천해야 합니다.
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+각 추천 시에는 다음 형식으로 응답하세요:
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
+**인터뷰 영상 추천:**
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+1. 📺 제목: [영상 제목]
+   • 출연자: [주요 출연자]
+   • 내용: [간단한 설명]
+   • 추천 이유: [사용자 요구와 관련된 추천 이유]
+   
+2. 📺 제목: [영상 제목]
+   • 출연자: [주요 출연자]
+   • 내용: [간단한 설명]
+   • 추천 이유: [사용자 요구와 관련된 추천 이유]
+
+3. 📺 제목: [영상 제목]
+   • 출연자: [주요 출연자]
+   • 내용: [간단한 설명]
+   • 추천 이유: [사용자 요구와 관련된 추천 이유]
+
+**추가 정보:**
+[관련 내용이나 추가 조언]
+
+추천 후에는 사용자와 자연스럽게 대화를 계속하며, 더 구체적인 추천이 필요하면 질문하세요.
+사용자의 피드백에 따라 더 나은 추천을 제공할 수 있습니다."""
+
+# Display the existing chat messages
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# Create a chat input field
+if prompt := st.chat_input("어떤 인터뷰 영상을 추천받고 싶으신가요?"):
+    
+    # Store and display the user message
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # Generate a response using the OpenAI API
+    messages_for_api = [
+        {"role": "system", "content": SYSTEM_PROMPT}
+    ] + [
+        {"role": m["role"], "content": m["content"]}
+        for m in st.session_state.messages
+    ]
+    
+    stream = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages_for_api,
+        stream=True,
+        temperature=0.7,
+        max_tokens=2000
+    )
+
+    # Stream the response to the chat
+    with st.chat_message("assistant"):
+        response = st.write_stream(stream)
+    
+    # Store the assistant message in session state
+    st.session_state.messages.append({"role": "assistant", "content": response})
