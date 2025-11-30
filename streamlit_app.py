@@ -12,9 +12,14 @@ st.write(
 )
 
 # Get OpenAI API key from secrets
-openai_api_key = st.secrets.get("OPENAI_API_KEY")
-if not openai_api_key:
+try:
+    openai_api_key = st.secrets["OPENAI_API_KEY"]
+except (KeyError, AttributeError):
     st.error("⚠️ OpenAI API 키가 설정되지 않았습니다. .streamlit/secrets.toml 파일을 확인해주세요.", icon="🔑")
+    st.stop()
+
+if not openai_api_key or openai_api_key == "":
+    st.error("⚠️ OpenAI API 키가 비어있습니다. .streamlit/secrets.toml에 유효한 키를 입력해주세요.", icon="🔑")
     st.stop()
 
 # Create an OpenAI client.
